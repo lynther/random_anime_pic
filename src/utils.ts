@@ -1,7 +1,8 @@
 import { InvalidArgumentError } from 'commander';
 
-export function calculateLimits(total: number, maxLimit: number): number[] {
+export function calculateLimits(total: number): number[] {
   const limits: number[] = [];
+  const maxLimit = 100;
 
   while (total > 0) {
     if (total > maxLimit) {

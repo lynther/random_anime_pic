@@ -69,7 +69,7 @@ const options = program.opts<CommandOptionsValues>();
 const totalImages = options.total > 0 ? options.total : 100;
 const tasks: Promise<string[]>[] = [];
 
-calculateLimits(totalImages, 100).forEach(limit => {
+calculateLimits(totalImages).forEach(limit => {
   tasks.push(getImageUrls(limit, 'explicit'));
 });
 
