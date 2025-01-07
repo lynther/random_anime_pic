@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { NekosapiResponse, Rating } from './types';
+import { calculateLimits } from './utils';
 
 async function getImageUrls(limit: number, rating: Rating): Promise<string[]> {
   let data: NekosapiResponse[];
@@ -55,12 +56,12 @@ async function saveImage(url: string): Promise<string | undefined> {
   return url;
 }
 
-const total = 10;
+const totalImages = 2345;
 const tasks: Promise<string[]>[] = [];
 
-for (let i = 0; i < total; i++) {
-  tasks.push(getImageUrls(100, 'explicit'));
-}
+calculateLimits(totalImages, 100).forEach(limit => {
+  tasks.push(getImageUrls(limit, 'explicit'));
+});
 
 const imageUrls = (await Promise.all(tasks)).flat();
 console.log(`Собрал - ${imageUrls.length} ссылок на изображения`);
