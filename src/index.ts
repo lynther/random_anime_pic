@@ -1,8 +1,9 @@
+import { Command } from 'commander';
 import fs from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { NekosapiResponse, Rating } from './types';
-import { calculateLimits } from './utils';
+import type { CommandOptionsValues, NekosapiResponse, Rating } from './types';
+import { calculateLimits, myParseInt } from './utils';
 
 async function getImageUrls(limit: number, rating: Rating): Promise<string[]> {
   let data: NekosapiResponse[];
@@ -55,8 +56,17 @@ async function saveImage(url: string): Promise<string | undefined> {
   await writeFile(filePath, new Uint8Array(arrayBuffer));
   return url;
 }
+const program = new Command();
 
-const totalImages = 2345;
+program.option(
+  '-t, --total <number>',
+  'Количество изображений для загрузки',
+  myParseInt
+);
+program.parse();
+const options = program.opts<CommandOptionsValues>();
+
+const totalImages = options.total > 0 ? options.total : 100;
 const tasks: Promise<string[]>[] = [];
 
 calculateLimits(totalImages, 100).forEach(limit => {

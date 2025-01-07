@@ -1,5 +1,9 @@
 export type Rating = 'safe' | 'suggestive' | 'borderline' | 'explicit';
 
+export interface CommandOptionsValues {
+  total: number;
+}
+
 export interface NekosapiResponse {
   id: number;
   url: string;
