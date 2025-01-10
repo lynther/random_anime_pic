@@ -102,12 +102,7 @@ async function downloadImages(
 
 async function main() {
   const program = new Command();
-  program.option(
-    '-t, --total <number>',
-    'Количество изображений для загрузки (default: 100)',
-    myParseInt,
-    100
-  );
+  program.option('-t, --total <number>', 'Количество изображений для загрузки', myParseInt, 100);
   program.option(
     '-r, --rating <safe | suggestive | borderline | explicit>',
     'Рейтинг изображений',
@@ -116,7 +111,7 @@ async function main() {
   );
   program.option(
     '-c, --concurrency <number>',
-    'Сколько одновременно загружать изображений (default: 1000)',
+    'Сколько одновременно загружать изображений',
     myParseInt,
     1000
   );
