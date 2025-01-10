@@ -4,6 +4,7 @@ export interface CommandOptionsValues {
   total: number;
   concurrency: number;
   downloadDir: string;
+  rating: Rating;
 }
 
 export interface NekosapiResponse {

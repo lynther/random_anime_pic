@@ -75,11 +75,16 @@ async function downloadImages(
 }
 
 async function main() {
+  const availableRatings = ['safe', 'suggestive', 'borderline', 'explicit'];
   const program = new Command();
   program.option(
     '-t, --total <number>',
-    'Количество изображений для загрузки',
+    'Количество изображений для загрузки (default: 100)',
     myParseInt
+  );
+  program.option(
+    '-r, --rating <safe | suggestive | borderline | explicit>',
+    'Рейтинг изображений  (default: "safe")'
   );
   program.option(
     '-c, --concurrency <number>',
@@ -101,8 +106,11 @@ async function main() {
 
   const totalImages = options.total > 0 ? options.total : 100;
   const concurrency = options.concurrency > 0 ? options.concurrency : 1000;
+  const rating = availableRatings.includes(options.rating)
+    ? options.rating
+    : 'safe';
 
-  const imageUrls = await getImages(totalImages, 'explicit');
+  const imageUrls = await getImages(totalImages, rating);
 
   if (!imageUrls.length) {
     console.log('Нет изображений для загрузки.');
