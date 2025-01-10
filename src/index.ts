@@ -7,25 +7,44 @@ import { calculateLimits, myParseInt, parseRating } from './utils';
 
 const limiter = pLimit(1);
 
-async function getImages(total: number, rating: Rating, concurrency: number): Promise<string[]> {
-  const worker = async (limit: number, rating: Rating): Promise<string[]> => {
-    const url = `https://api.nekosapi.com/v4/images/random?limit=${limit}&rating=${rating}`;
+async function findActualApiVersion(): Promise<number | null> {
+  for (let version = 3; version <= 10; version++) {
+    const response = await fetch(`https://api.nekosapi.com/v${version}/images/random`);
 
-    try {
-      const response = await fetch(url);
-      const images = (await response.json()) as NekosapiResponse[];
-
-      return images.map(image => image.url);
-    } catch (error) {
-      console.error(`worker(${url}) - ${error}`);
-      return [];
+    if (response.ok) {
+      return version;
     }
-  };
+  }
 
+  return null;
+}
+
+async function getImagesWorker(limit: number, rating: Rating, apiVer: number): Promise<string[]> {
+  const url = `https://api.nekosapi.com/v${apiVer}/images/random?limit=${limit}&rating=${rating}&tags=girl`;
+
+  try {
+    const response = await fetch(url);
+    const images = (await response.json()) as NekosapiResponse[];
+
+    return images.map(image => image.url);
+  } catch (error) {
+    console.error(`worker(${url}) - ${error}`);
+    return [];
+  }
+}
+
+async function getImages(
+  total: number,
+  rating: Rating,
+  concurrency: number,
+  apiVer: number
+): Promise<string[]> {
   limiter.concurrency = concurrency;
   const limits = calculateLimits(total);
 
-  const images = await Promise.all(limits.map(limit => limiter(() => worker(limit, rating))));
+  const images = await Promise.all(
+    limits.map(limit => limiter(() => getImagesWorker(limit, rating, apiVer)))
+  );
   return images.flat();
 }
 
@@ -95,12 +114,20 @@ async function main() {
   program.parse();
 
   const options = program.opts<CommandOptionsValues>();
+  const apiVersion = await findActualApiVersion(); // Очень редко, но версия апи может измениться...
+
+  console.log(`Версия API: ${apiVersion}`);
+
+  if (apiVersion === null) {
+    console.error('Работа программы не возможна, нет доступной версии API.');
+    return;
+  }
 
   if (!fs.existsSync(options.downloadDir)) {
     fs.mkdirSync(options.downloadDir);
   }
 
-  const imageUrls = await getImages(options.total, options.rating, 10);
+  const imageUrls = await getImages(options.total, options.rating, 10, apiVersion);
 
   if (!imageUrls.length) {
     console.log('Нет изображений для загрузки.');
