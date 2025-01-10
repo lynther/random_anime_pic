@@ -2,41 +2,43 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import pLimit from 'p-limit';
 import type { CommandOptionsValues, NekosapiResponse, Rating } from './types';
 import { calculateLimits, myParseInt } from './utils';
 
-async function getImageUrls(limit: number, rating: Rating): Promise<string[]> {
-  let data: NekosapiResponse[];
+async function getImages(total: number, rating: Rating): Promise<string[]> {
+  const worker = async (limit: number, rating: Rating): Promise<string[]> => {
+    const url = `https://api.nekosapi.com/v4/images/random?limit=${limit}&rating=${rating}`;
 
-  try {
-    const response = await fetch(
-      `https://api.nekosapi.com/v4/images/random?limit=${limit}&rating=${rating}`
-    );
+    try {
+      const response = await fetch(url);
+      const images = (await response.json()) as NekosapiResponse[];
 
-    if (!response.ok) {
-      console.error(`getImageUrls(${limit}) - ${response.status}`);
+      return images.map(image => image.url);
+    } catch (error) {
+      console.error(`worker(${url}) - ${error}`);
       return [];
     }
+  };
 
-    data = await response.json();
-  } catch (error) {
-    console.error(error);
-    return [];
-  }
+  const getImagesLimit = pLimit(10);
+  const limits = calculateLimits(total);
 
-  return data.map(r => r.url);
+  const images = await Promise.all(
+    limits.map(limit => getImagesLimit(() => worker(limit, rating)))
+  );
+  return images.flat();
 }
 
-if (!fs.existsSync('images')) {
-  fs.mkdirSync('images');
-}
-
-async function saveImage(url: string): Promise<string | undefined> {
+async function downloadImage(
+  url: string,
+  downloadDir: string
+): Promise<string> {
   let arrayBuffer: ArrayBuffer;
-  const filePath = path.join('images', path.basename(url));
+  const filePath = path.join(downloadDir, path.basename(url));
 
   if (fs.existsSync(filePath)) {
-    return;
+    return '';
   }
 
   try {
@@ -44,40 +46,76 @@ async function saveImage(url: string): Promise<string | undefined> {
 
     if (!response.ok) {
       console.error(`saveImage(${url}) - ${response.status}`);
-      return;
+      return '';
     }
 
     arrayBuffer = await response.arrayBuffer();
   } catch (error) {
     console.error(`saveImage(${url}) - ${error}`);
-    return;
+    return '';
   }
 
   await writeFile(filePath, new Uint8Array(arrayBuffer));
+  console.log(filePath);
+
   return url;
 }
-const program = new Command();
 
-program.option(
-  '-t, --total <number>',
-  'Количество изображений для загрузки',
-  myParseInt
-);
-program.parse();
-const options = program.opts<CommandOptionsValues>();
+async function downloadImages(
+  imageUrls: string[],
+  downloadDir: string,
+  concurrency: number
+): Promise<string[]> {
+  const downloadLimit = pLimit(concurrency);
+  const downloadedImages = await Promise.all(
+    imageUrls.map(url => downloadLimit(() => downloadImage(url, downloadDir)))
+  );
 
-const totalImages = options.total > 0 ? options.total : 100;
-const tasks: Promise<string[]>[] = [];
+  return downloadedImages.filter(url => url !== '');
+}
 
-calculateLimits(totalImages).forEach(limit => {
-  tasks.push(getImageUrls(limit, 'explicit'));
-});
+async function main() {
+  const program = new Command();
+  program.option(
+    '-t, --total <number>',
+    'Количество изображений для загрузки',
+    myParseInt
+  );
+  program.option(
+    '-c, --concurrency <number>',
+    'Сколько одновременно загружать изображений (default: 1000)',
+    myParseInt
+  );
+  program.option(
+    '-d, --download-dir <string>',
+    'Директория для загрузки',
+    'downloads'
+  );
+  program.parse();
 
-const imageUrls = (await Promise.all(tasks)).flat();
-console.log(`Собрал - ${imageUrls.length} ссылок на изображения`);
+  const options = program.opts<CommandOptionsValues>();
 
-const downloadedUrls = (
-  await Promise.all(imageUrls.map(url => saveImage(url)))
-).filter(url => url !== undefined);
+  if (!fs.existsSync(options.downloadDir)) {
+    fs.mkdirSync(options.downloadDir);
+  }
 
-console.log(`Скачал - ${downloadedUrls.length} изображений`);
+  const totalImages = options.total > 0 ? options.total : 100;
+  const concurrency = options.concurrency > 0 ? options.concurrency : 1000;
+
+  const imageUrls = await getImages(totalImages, 'explicit');
+
+  if (!imageUrls.length) {
+    console.log('Нет изображений для загрузки.');
+    return;
+  }
+
+  console.log(`Собрал - ${imageUrls.length} ссылок на изображения`);
+  const downloadedUrls = await downloadImages(
+    imageUrls,
+    options.downloadDir,
+    concurrency
+  );
+  console.log(`Скачал - ${downloadedUrls.length} изображений`);
+}
+
+main();

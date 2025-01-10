@@ -9,6 +9,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "p-limit": "^6.2.0"
   }
 }

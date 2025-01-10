@@ -2,6 +2,8 @@ export type Rating = 'safe' | 'suggestive' | 'borderline' | 'explicit';
 
 export interface CommandOptionsValues {
   total: number;
+  concurrency: number;
+  downloadDir: string;
 }
 
 export interface NekosapiResponse {
