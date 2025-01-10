@@ -6,6 +6,9 @@ import pLimit from 'p-limit';
 import { calculateLimits, myParseInt, parseRating } from './utils';
 
 const limiter = pLimit(1);
+const counters = {
+  images: 0,
+};
 
 async function findActualApiVersion(): Promise<number | null> {
   for (let version = 3; version <= 10; version++) {
@@ -26,6 +29,9 @@ async function getImagesWorker(limit: number, rating: Rating, apiVer: number): P
     const response = await fetch(url);
     const images = (await response.json()) as NekosapiResponse[];
 
+    counters.images += images.length;
+    process.stdout.write(`Получено изображений: ${counters.images}\r`);
+
     return images.map(image => image.url);
   } catch (error) {
     console.error(`worker(${url}) - ${error}`);
@@ -45,6 +51,9 @@ async function getImages(
   const images = await Promise.all(
     limits.map(limit => limiter(() => getImagesWorker(limit, rating, apiVer)))
   );
+
+  console.log('');
+
   return images.flat();
 }
 
@@ -71,7 +80,8 @@ async function downloadImage(url: string, downloadDir: string): Promise<string |
   }
 
   await writeFile(filePath, new Uint8Array(arrayBuffer));
-  console.log(filePath);
+
+  process.stdout.write(`Сохранил: ${filePath}\r`);
 
   return url;
 }
@@ -127,7 +137,7 @@ async function main() {
     fs.mkdirSync(options.downloadDir);
   }
 
-  const imageUrls = await getImages(options.total, options.rating, 10, apiVersion);
+  const imageUrls = await getImages(options.total, options.rating, 20, apiVersion);
 
   if (!imageUrls.length) {
     console.log('Нет изображений для загрузки.');
@@ -135,7 +145,10 @@ async function main() {
   }
 
   console.log(`Собрал - ${imageUrls.length} ссылок на изображения`);
+
   const downloadedUrls = await downloadImages(imageUrls, options.downloadDir, options.concurrency);
+
+  console.log('');
   console.log(`Скачал - ${downloadedUrls.length} изображений`);
 }
 
