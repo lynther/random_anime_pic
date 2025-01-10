@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import pLimit from 'p-limit';
-import type { CommandOptionsValues, NekosapiResponse, Rating } from './types';
-import { calculateLimits, myParseInt } from './utils';
+import { calculateLimits, myParseInt, parseRating } from './utils';
 
-async function getImages(total: number, rating: Rating): Promise<string[]> {
+const limiter = pLimit(1);
+
+async function getImages(total: number, rating: Rating, concurrency: number): Promise<string[]> {
   const worker = async (limit: number, rating: Rating): Promise<string[]> => {
     const url = `https://api.nekosapi.com/v4/images/random?limit=${limit}&rating=${rating}`;
 
@@ -21,24 +22,19 @@ async function getImages(total: number, rating: Rating): Promise<string[]> {
     }
   };
 
-  const getImagesLimit = pLimit(10);
+  limiter.concurrency = concurrency;
   const limits = calculateLimits(total);
 
-  const images = await Promise.all(
-    limits.map(limit => getImagesLimit(() => worker(limit, rating)))
-  );
+  const images = await Promise.all(limits.map(limit => limiter(() => worker(limit, rating))));
   return images.flat();
 }
 
-async function downloadImage(
-  url: string,
-  downloadDir: string
-): Promise<string> {
+async function downloadImage(url: string, downloadDir: string): Promise<string | null> {
   let arrayBuffer: ArrayBuffer;
   const filePath = path.join(downloadDir, path.basename(url));
 
   if (fs.existsSync(filePath)) {
-    return '';
+    return null;
   }
 
   try {
@@ -46,13 +42,13 @@ async function downloadImage(
 
     if (!response.ok) {
       console.error(`saveImage(${url}) - ${response.status}`);
-      return '';
+      return null;
     }
 
     arrayBuffer = await response.arrayBuffer();
   } catch (error) {
     console.error(`saveImage(${url}) - ${error}`);
-    return '';
+    return null;
   }
 
   await writeFile(filePath, new Uint8Array(arrayBuffer));
@@ -66,36 +62,36 @@ async function downloadImages(
   downloadDir: string,
   concurrency: number
 ): Promise<string[]> {
-  const downloadLimit = pLimit(concurrency);
+  limiter.concurrency = concurrency;
+
   const downloadedImages = await Promise.all(
-    imageUrls.map(url => downloadLimit(() => downloadImage(url, downloadDir)))
+    imageUrls.map(url => limiter(() => downloadImage(url, downloadDir)))
   );
 
-  return downloadedImages.filter(url => url !== '');
+  return downloadedImages.filter(url => url !== null);
 }
 
 async function main() {
-  const availableRatings = ['safe', 'suggestive', 'borderline', 'explicit'];
   const program = new Command();
   program.option(
     '-t, --total <number>',
     'Количество изображений для загрузки (default: 100)',
-    myParseInt
+    myParseInt,
+    100
   );
   program.option(
     '-r, --rating <safe | suggestive | borderline | explicit>',
-    'Рейтинг изображений  (default: "safe")'
+    'Рейтинг изображений',
+    parseRating,
+    'safe'
   );
   program.option(
     '-c, --concurrency <number>',
     'Сколько одновременно загружать изображений (default: 1000)',
-    myParseInt
+    myParseInt,
+    1000
   );
-  program.option(
-    '-d, --download-dir <string>',
-    'Директория для загрузки',
-    'downloads'
-  );
+  program.option('-d, --download-dir <string>', 'Директория для загрузки', 'downloads');
   program.parse();
 
   const options = program.opts<CommandOptionsValues>();
@@ -104,13 +100,7 @@ async function main() {
     fs.mkdirSync(options.downloadDir);
   }
 
-  const totalImages = options.total > 0 ? options.total : 100;
-  const concurrency = options.concurrency > 0 ? options.concurrency : 1000;
-  const rating = availableRatings.includes(options.rating)
-    ? options.rating
-    : 'safe';
-
-  const imageUrls = await getImages(totalImages, rating);
+  const imageUrls = await getImages(options.total, options.rating, 10);
 
   if (!imageUrls.length) {
     console.log('Нет изображений для загрузки.');
@@ -118,11 +108,7 @@ async function main() {
   }
 
   console.log(`Собрал - ${imageUrls.length} ссылок на изображения`);
-  const downloadedUrls = await downloadImages(
-    imageUrls,
-    options.downloadDir,
-    concurrency
-  );
+  const downloadedUrls = await downloadImages(imageUrls, options.downloadDir, options.concurrency);
   console.log(`Скачал - ${downloadedUrls.length} изображений`);
 }
 

@@ -1,13 +1,13 @@
-export type Rating = 'safe' | 'suggestive' | 'borderline' | 'explicit';
+type Rating = 'safe' | 'suggestive' | 'borderline' | 'explicit';
 
-export interface CommandOptionsValues {
+interface CommandOptionsValues {
   total: number;
   concurrency: number;
   downloadDir: string;
   rating: Rating;
 }
 
-export interface NekosapiResponse {
+interface NekosapiResponse {
   id: number;
   url: string;
   rating: Rating;
